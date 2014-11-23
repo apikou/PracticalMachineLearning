@@ -1,0 +1,185 @@
+---
+title: "Practical Machine Learning project"
+author: "pikou"
+output:
+  html_document:
+    keep_md: yes
+---
+##  INTRODUCTION:
+
+  Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible
+  to collect a large amount of data about personal activity relatively
+  inexpensively. These type of devices are part of the quantified self movement 
+  a group of enthusiasts who take measurements about themselves regularly to 
+  improve their health, to find patterns in their behavior, or because they are
+  tech geeks. One thing that people regularly do is quantify how much of a 
+  particular activity they do, but they rarely quantify how well they do it. 
+  In this project, the goal will be to use data from accelerometers on the belt,
+  forearm, arm, and dumbell of 6 participants. They were asked to perform babell    
+  lifts correctly and incorrectly in 5 different ways.
+
+. More information is  available from the website here:
+  http://groupware.les.inf.puc-rio.br/har 
+  (see the section on the Weight Lifting Exercise Dataset).
+
+. The goal of the project is to predict the manner in which the 6 partcipants
+  did the exercise. This is the "classe" variable in the training set,and  omitted in the test set for grading purpose by Coursera Machine Learning class of Data Science Specialisation.
+  
+. 5 types of activities to detect : 1 correct method and 4 common mistakes:
+    
+  Exactly according to the specification (Class A)
+  Ehrowing the elbows to the front (Class B)
+  Lifting the dumbbell only halfway (Class C)
+  Lowering the dumbbell only halfway (Class D)
+  Throwing the hips to the front (Class E)
+  
+.  The training data for this project are available here: 
+  
+  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+   The test data are available here: 
+  
+  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+##  DATA EXPLORATION:
+       
+  1. Loading and reading  data :
+  
+```{r}
+training <- read.csv("pml-training.csv",na.strings=c("NA","#DIV/0!"))
+testing <- read.csv("pml-testing.csv",na.strings=c("NA","#DIV/0!"))
+```
+  
+  The training data is a set of 19622 observations and 160 varaibles, the last 
+ variable is the outcome labled 'classe',which is a factor with 5 levels(A,B,C,D
+ ,E) defining the participant activity.
+  The test data is a set of 20 observations and 160 variables, the oucome variable is replaced with the variable problem.id for the project grading purpose.
+ 
+```{r}  
+dim(training)
+dim(testing)
+str(training$classe)
+str(testing[160])
+summary(training$classe)  
+```
+
+2. Training and testing data sets cleaning and features reduction:
+    Both data sets contains considerable number of missing values.
+    
+```{r} 
+    sum(is.na(training))
+    sum(is.na(testing))
+```
+
+ Removing  NAs
+
+```{r}
+  TrNAsCol <- which(colSums(is.na(training)) >0)
+  training1 <- training[,-TrNAsCol]
+  TsNAsCol <- which(colSums(is.na(testing)) >0)
+  testing1 <- testing[,-TsNAsCol]
+```
+  
+ Removing the first 7 varaibles (row numbers,time stamps, windows numbers) 
+  irrelevants for this projects.
+  
+```{r}  
+  dim(training1)
+  dim(testing1)
+  
+  training2 <- training1[,8:60]
+  testing2  <-  testing1[,8:60]
+  
+  dim(training2)
+  dim(testing2)
+```
+
+3. Predictors nearZeroVar and correlation :No variables have a close to zero 
+  variance ,some are correlated and will be removed.
+
+```{r}
+  require(caret)
+  Nsv <- nearZeroVar(training2,saveMetrics=T)
+    
+  cor <- findCorrelation(cor(training2[,-53]))
+  training2 <- training2[,-cor]
+  testing2 <-  testing2[,-cor] 
+  cor
+  
+  dim(training2)
+  dim(testing2)
+```
+
+##  TRAINING DATASET AND CROSS-VALIDATION AND MODEL SELECTION : 
+    
+    The classification variable in the test set in  file pml-testing.csv ,
+  is replaced by problem.id for grading purposes, to validate the model we need
+  to partition the cleaned training set (my training2) in a training and test
+  sets ( train and test),so we can train the model on train set and test the
+  accuracy on the test set. A partition 60/40 is choosen (i am tryiny to reduce
+  procesing time ,i missed two submissions because of that). 
+  More exploration might be needed to further process the data for issues with
+  calibration ,may be for another time, i will use the Random Forest algorithm
+  for its flexibility and accuracy and also its popularity,and also to be able
+  to compare my results to those of the authors of the original paper,who used
+  Random Forest.
+ 
+```{r}
+   set.seed(100)
+  
+  inTrain <- createDataPartition(training2$classe, p= 0.60 ,list=F)
+  train   <- training2[inTrain,]
+  test    <- training2[-inTrain,]
+```
+
+ Training control setup :
+
+```{r}
+  require(randomForest)
+  ctrl <- trainControl( method = "repeatedcv", repeats=5 ,number=10 )
+#  rfFit <- train(classe ~ . , data = train ,method= "rf",trControl=ctrl)
+  print(rfFit)
+```
+
+ Confusion matrix and expected out of sample error:
+
+```{r}
+  rfTrainPred <- predict(rfFit, newdata= train)
+  rfTestPred <- predict(rfFit, newdata= test)
+  rfTrainConfusion <- confusionMatrix(train$classe,rfTrainPred )
+  rfTestConfusion <- confusionMatrix(test$classe,rfTestPred )
+``` 
+
+          
+  The model accuracy on the training set (train) reached 99.7%  
+  
+```{r}
+rfTrainConfusion  
+```
+
+  The model accuracy on the testing set (test) reached 99.7% 
+```{r}
+  rfTestConfusion
+```  
+##  Expected out of sample error:
+  
+  The model results shows that the accuracy on testing set (test) can reach 
+  99.7%,so  we can predict an out of sample error rate on new data to be around    
+  0.3%
+  
+#  Submission code for the class project assignment(test data classification):
+  
+```{r}
+  testPred1 <- as.character(predict(rfFit, newdata= testing2))  
+  testPred1
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+answers <- testPred1 
+pml_write_files(answers)
+```
+
